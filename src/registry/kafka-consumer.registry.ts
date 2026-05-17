@@ -53,7 +53,7 @@ export class KafkaConsumerRegistry {
     const correlationId = headers["correlationId"]?.toString();
     const entry = this.handlers.get(topic);
 
-    // ── Reply path ────────────────────────────────────────────────────────
+    // Reply path
     if (!entry) {
       if (correlationId) {
         const raw = payload.message.value?.toString();
@@ -74,7 +74,7 @@ export class KafkaConsumerRegistry {
       return;
     }
 
-    // ── Request path ──────────────────────────────────────────────────────
+    // Request path
     const replyTopic = headers["replyTopic"]?.toString();
 
     try {

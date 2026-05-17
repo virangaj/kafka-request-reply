@@ -14,13 +14,13 @@ export interface KafkaReplyEnvelope<T = unknown> {
 }
 
 export interface KafkaRequestReplyOptions {
-  /** How long to wait for a reply before rejecting. Default: 10000 ms */
+  /** How long to wait for a reply before rejecting. Default: 60000 ms */
   timeoutMs?: number;
   /** Optional Kafka message key */
   key?: string;
 }
 
 export interface KafkaProducerConfig {
-  /** Default timeout for all request() calls. Default: 10000 ms */
+  /** Default timeout for all request() calls. Default: 60000 ms */
   defaultTimeoutMs?: number;
 }

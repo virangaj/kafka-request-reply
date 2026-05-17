@@ -15,8 +15,6 @@ export interface KafkaClientConfig {
 }
 
 /**
- * Top-level client — creates and wires everything together.
- *
  * @example
  * const client = new KafkaClient({
  *   kafka: { clientId: 'my-app', brokers: ['localhost:9092'] },

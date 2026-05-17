@@ -20,11 +20,11 @@ export class KafkaProducer {
     this.producer = kafka.producer();
     this.consumerManager = consumerManager;
     this.config = {
-      defaultTimeoutMs: config.defaultTimeoutMs ?? 10_000,
+      defaultTimeoutMs: config.defaultTimeoutMs ?? 60000,
     };
 
     // Bind reply resolution into the registry so it can resolve Promises
-    // without creating a circular import between producer ↔ registry
+    // without creating a circular import between producer and registry
     registry.bindProducer({
       resolveReply: this.resolveReply.bind(this),
       rejectReply: this.rejectReply.bind(this),
@@ -91,7 +91,7 @@ export class KafkaProducer {
     }
 
     const correlationId = generateCorrelationId();
-    console.log(`[KafkaProducer] [${correlationId}] Sending request → ${requestTopic}`);
+    console.log(`[${correlationId}] | [KafkaProducer] Sending request to ${requestTopic}`);
 
     await this.sendRaw({
       topic: requestTopic,
@@ -112,7 +112,7 @@ export class KafkaProducer {
         this.pendingRequests.delete(correlationId);
         reject(
           new Error(
-            `[KafkaProducer] [${correlationId}] Request to "${requestTopic}" timed out after ${timeoutMs}ms`,
+            `[${correlationId}] | [KafkaProducer] Request to "${requestTopic}" timed out after ${timeoutMs}ms`,
           ),
         );
       }, timeoutMs);
@@ -127,7 +127,7 @@ export class KafkaProducer {
 
   /** @internal — called by the registry when a reply arrives */
   resolveReply(correlationId: string, data: unknown): void {
-    console.log(`[KafkaProducer] [${correlationId}] Reply received ✓`);
+    console.log(`[${correlationId}] | [KafkaProducer] Reply received`);
     const pending = this.pendingRequests.get(correlationId);
     if (!pending) return;
 
@@ -138,7 +138,7 @@ export class KafkaProducer {
 
   /** @internal — called by the registry when the remote handler throws */
   rejectReply(correlationId: string, error: Error): void {
-    console.error(`[KafkaProducer] [${correlationId}] Reply error:`, error.message);
+    console.error(`[${correlationId}] | [KafkaProducer] Reply error:`, error.message);
     const pending = this.pendingRequests.get(correlationId);
     if (!pending) return;
 

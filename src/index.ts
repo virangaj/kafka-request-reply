@@ -11,7 +11,6 @@ export type {
   KafkaProducerConfig,
 } from "./types";
 
-// import from kafkajs directly
 export type {
   EachMessagePayload,
   KafkaMessage,
