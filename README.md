@@ -49,13 +49,9 @@ export const KAFKA_REQUEST_TOPICS = {
   ORDER_CREATE_REQUEST: "order.create.request",
 } as const;
 
-// Each pod gets its own unique reply topic — required for multi-pod deployments.
-// In Kubernetes, POD_NAME is injected via the downward API (see multi-pod section).
-// In local dev, a random UUID is used automatically.
-const POD_ID = process.env.POD_NAME ?? randomUUID();
 
 export const KAFKA_REPLY_TOPICS = {
-  USER_UPDATE_REPLY: `user.update.reply.${POD_ID}`,
+  USER_UPDATE_REPLY: `user.update.reply,
 } as const;
 ```
 
@@ -245,8 +241,6 @@ import { Module } from "@nestjs/common";
 import { KafkaModule } from "kafka-request-reply/nestjs";
 import { randomUUID } from "crypto";
 
-const POD_ID = process.env.POD_NAME ?? randomUUID();
-
 @Module({
   imports: [
     KafkaModule.register({
@@ -299,7 +293,6 @@ import { Controller, Post, Body } from "@nestjs/common";
 import { KafkaProducer } from "kafka-request-reply/nestjs";
 import { randomUUID } from "crypto";
 
-const POD_ID = process.env.POD_NAME ?? randomUUID();
 
 @Controller("orders")
 export class OrderController {
@@ -315,7 +308,7 @@ export class OrderController {
   async create(@Body() body: { items: string[] }) {
     const result = await this.producer.request(
       "orders.create.request",
-      `orders.create.reply.${POD_ID}`,
+      `orders.create.reply`,
       body,
     );
     return result;
@@ -376,22 +369,7 @@ spec:
               fieldPath: metadata.name
 ```
 
-### Step 2 — use POD_NAME in your constants
-
-```ts
-// src/kafka/kafka.constants.ts
-import { randomUUID } from "crypto";
-
-// In Kubernetes: uses the actual pod name e.g. "my-app-6b9d4f-x8k2p"
-// In local dev:  uses a random UUID automatically
-const POD_ID = process.env.POD_NAME ?? randomUUID();
-
-export const KAFKA_REPLY_TOPICS = {
-  USER_UPDATE_REPLY: `user.update.reply.${POD_ID}`,
-} as const;
-```
-
-### Step 3 — set short retention on reply topics
+### Step 2 — set short retention on reply topics
 
 Reply topics only need to live long enough for the request timeout.
 Set a short retention so they don't accumulate data:
@@ -444,7 +422,7 @@ Sends a request and returns a `Promise<TResponse>` that resolves when the consum
 ```ts
 const result = await kafkaClient.producer.request<Input, Output>(
   "orders.create.request",
-  `orders.create.reply.${POD_ID}`,
+  `orders.create.reply`,
   { items: ["item-1"] },
   { timeoutMs: 10000 },
 );
@@ -495,6 +473,5 @@ try {
 | Single pod, fire-and-forget | ✅ | No config needed |
 | Single pod, request-reply | ✅ | No config needed |
 | Multiple pods, fire-and-forget | ✅ | Kafka group balancing handles it |
-| Multiple pods, request-reply | ✅ | Use per-pod reply topic via `POD_NAME` |
 | Graceful shutdown (SIGTERM) | ✅ | Handle both `SIGINT` and `SIGTERM` |
 | Kubernetes pod termination | ✅ | `disconnect()` sends LeaveGroup immediately |
