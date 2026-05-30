@@ -26,7 +26,7 @@ src/
 ├── app.ts                         ← express setup
 ├── kafka/
 │   ├── kafka.client.ts            ← KafkaClient singleton
-│   ├── kafka.constants.ts         ← topic names, group id, pod id
+│   ├── kafka.constants.ts         ← topic names, group id
 │   └── register-consumers.ts     ← register all @KafkaConsumer classes
 ├── consumers/
 │   ├── user-update.consumer.ts   ← request-reply handler
@@ -40,8 +40,6 @@ src/
 
 ```ts
 // src/kafka/kafka.constants.ts
-import { randomUUID } from "crypto";
-
 export const KAFKA_GROUP_ID = "my-app-group";
 
 export const KAFKA_REQUEST_TOPICS = {
@@ -49,9 +47,8 @@ export const KAFKA_REQUEST_TOPICS = {
   ORDER_CREATE_REQUEST: "order.create.request",
 } as const;
 
-
 export const KAFKA_REPLY_TOPICS = {
-  USER_UPDATE_REPLY: `user.update.reply,
+  USER_UPDATE_REPLY: "user.update.reply",
 } as const;
 ```
 
@@ -239,7 +236,6 @@ export default router;
 // app.module.ts
 import { Module } from "@nestjs/common";
 import { KafkaModule } from "kafka-request-reply/nestjs";
-import { randomUUID } from "crypto";
 
 @Module({
   imports: [
@@ -291,8 +287,6 @@ export class OrderConsumer {
 // order.controller.ts
 import { Controller, Post, Body } from "@nestjs/common";
 import { KafkaProducer } from "kafka-request-reply/nestjs";
-import { randomUUID } from "crypto";
-
 
 @Controller("orders")
 export class OrderController {
@@ -308,7 +302,7 @@ export class OrderController {
   async create(@Body() body: { items: string[] }) {
     const result = await this.producer.request(
       "orders.create.request",
-      `orders.create.reply`,
+      "orders.create.reply",
       body,
     );
     return result;
@@ -327,71 +321,6 @@ const app = await NestFactory.create(AppModule);
 app.enableShutdownHooks(); // handles SIGTERM and SIGINT automatically
 await app.listen(3000);
 ```
-
----
-
-## Multi-pod deployments (Kubernetes)
-
-### The problem
-
-`request()` stores pending Promises in memory per pod. The reply topic is shared
-across the consumer group, so Kafka can route the reply to **any** pod — not
-necessarily the one that made the request. This causes timeouts.
-
-```
-Pod A calls request() → stores correlationId in Pod A memory
-Consumer processes it → sends reply to shared reply topic
-Kafka delivers reply to Pod B → correlationId not found → timeout ❌
-```
-
-### The fix — per-pod reply topics
-
-Give each pod its own unique reply topic using the Kubernetes downward API.
-Replies always go back to the exact pod that made the request.
-
-```
-Pod A calls request() → replyTopic = "user.update.reply.my-app-pod-a"
-Consumer processes it → sends reply to "user.update.reply.my-app-pod-a"
-Kafka delivers reply to Pod A → correlationId found → resolves ✅
-```
-
-### Step 1 — inject POD_NAME in your Kubernetes deployment
-
-```yaml
-# deployment.yaml
-spec:
-  containers:
-    - name: my-app
-      env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-```
-
-### Step 2 — set short retention on reply topics
-
-Reply topics only need to live long enough for the request timeout.
-Set a short retention so they don't accumulate data:
-
-```ts
-// when provisioning topics (e.g. via kafka-admin or terraform)
-{
-  topic: "user.update.reply.*",
-  numPartitions: 1,
-  replicationFactor: 1,
-  configEntries: [
-    { name: "retention.ms", value: "60000" }, // 60 seconds
-    { name: "cleanup.policy", value: "delete" },
-  ],
-}
-```
-
-### Fire-and-forget with multiple pods
-
-Fire-and-forget (`emit`) works natively with multiple pods — no changes needed.
-Kafka distributes messages across pods in the same consumer group automatically,
-each message goes to exactly one pod.
 
 ---
 
@@ -422,7 +351,7 @@ Sends a request and returns a `Promise<TResponse>` that resolves when the consum
 ```ts
 const result = await kafkaClient.producer.request<Input, Output>(
   "orders.create.request",
-  `orders.create.reply`,
+  "orders.create.reply",
   { items: ["item-1"] },
   { timeoutMs: 10000 },
 );
@@ -430,7 +359,7 @@ const result = await kafkaClient.producer.request<Input, Output>(
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `timeoutMs` | `number` | `10000` | Reject after this many ms |
+| `timeoutMs` | `number` | `60000` | Reject after this many ms |
 | `key` | `string` | — | Kafka message key |
 
 ### `KafkaClient` (Node.js only)
@@ -441,7 +370,7 @@ const client = new KafkaClient({
   groupId: "my-app-group",
   consumers: [],
   producer: {
-    defaultTimeoutMs: 10000,
+    defaultTimeoutMs: 60000,
   },
 });
 
@@ -460,7 +389,7 @@ try {
   const result = await producer.request("req.topic", "reply.topic", payload);
 } catch (err) {
   // handler threw  → err.message = whatever the handler threw
-  // timeout        → err.message = "Request to ... timed out after 10000ms"
+  // timeout        → err.message = "Request to ... timed out after 60000ms"
 }
 ```
 
