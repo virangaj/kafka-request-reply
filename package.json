@@ -1,6 +1,6 @@
 {
   "name": "kafka-request-reply",
-  "version": "1.0.1",
+  "version": "0.0.3",
   "description": "`kafka-request-reply` is a lightweight KafkaJS library for implementing fire-and-forget and request-reply messaging patterns in Node.js and NestJS. It simplifies correlation IDs, reply topics, and timeout handling for building scalable event-driven microservices.",
   "homepage": "https://github.com/virangaj/kafka-request-reply#readme",
   "repository": {
