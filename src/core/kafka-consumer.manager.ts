@@ -31,21 +31,32 @@ export class KafkaConsumerManager {
   }
 
   /**
-   * Subscribe to a reply topic at runtime (after run() has been called).
-   * KafkaJS requires a consumer restart to pick up new topics.
+   * Subscribe to a reply topic.
+   *
+   * Must be called BEFORE run() to avoid consumer group rebalancing.
+   * KafkaClient.connect() handles this automatically when replyTopics
+   * is passed in the config — use that instead of calling this directly.
+   *
+   * If called after run() (late subscription), a warn is logged and the
+   * consumer is restarted — this will cause a brief rebalance.
    */
   async subscribeReplyTopic(topic: string): Promise<void> {
     if (this.subscribedTopics.has(topic)) return;
 
-    console.log(`[KafkaConsumerManager] Auto-subscribing to reply topic: ${topic}`);
-
     if (this.running) {
+      console.warn(
+        `[KafkaConsumerManager] Late subscription to reply topic "${topic}". ` +
+          `Pass it in replyTopics config to avoid rebalancing.`,
+      );
       await this.consumer.stop();
+      this.running = false;
+      this.subscribedTopics.add(topic);
+      await this.consumer.subscribe({ topic, fromBeginning: false });
+      await this.run();
+    } else {
+      this.subscribedTopics.add(topic);
+      await this.consumer.subscribe({ topic, fromBeginning: false });
     }
-
-    this.subscribedTopics.add(topic);
-    await this.consumer.subscribe({ topic, fromBeginning: false });
-    await this.run();
   }
 
   async run(): Promise<void> {

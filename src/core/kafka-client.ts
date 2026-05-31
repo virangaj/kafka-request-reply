@@ -12,6 +12,18 @@ export interface KafkaClientConfig {
   /** Consumer classes decorated with @KafkaConsumer to register */
   consumers?: object[];
   producer?: KafkaProducerConfig;
+
+  /**
+   * Reply topics to subscribe to before run() is called.
+   * This prevents consumer group rebalancing caused by late topic subscription
+   * when the first request() call triggers subscribeReplyTopic().
+   *
+   * Always pass all reply topics your service uses here.
+   *
+   * @example
+   * replyTopics: Object.values(KAFKA_REPLY_TOPICS)
+   */
+  replyTopics?: string[];
 }
 
 /**
@@ -39,6 +51,7 @@ export class KafkaClient {
   readonly registry: KafkaConsumerRegistry;
   readonly consumerManager: KafkaConsumerManager;
   readonly producer: KafkaProducer;
+  private replyTopics: string[];
 
   constructor(config: KafkaClientConfig) {
     this.kafka = new Kafka(config.kafka);
@@ -55,6 +68,7 @@ export class KafkaClient {
       config.producer,
     );
 
+    this.replyTopics = config.replyTopics ?? [];
     // Register all provided consumer instances
     for (const consumer of config.consumers ?? []) {
       this.registry.register(consumer);
@@ -69,10 +83,16 @@ export class KafkaClient {
     await this.producer.connect();
     await this.consumerManager.connect();
 
-    // Subscribe to all topics that have a @KafkaConsumer handler
-    const topics = this.registry.getRegisteredTopics();
-    for (const topic of topics) {
+    // Subscribe to @KafkaConsumer request topics
+    const requestTopics = this.registry.getRegisteredTopics();
+    for (const topic of requestTopics) {
       await this.consumerManager.subscribe(topic, false);
+    }
+
+    // Subscribe to reply topics BEFORE run() — prevents rebalancing
+    for (const topic of this.replyTopics) {
+      await this.consumerManager.subscribe(topic, false);
+      console.log(`[KafkaConsumerManager] Subscribed to reply topic: ${topic}`);
     }
 
     await this.consumerManager.run();
